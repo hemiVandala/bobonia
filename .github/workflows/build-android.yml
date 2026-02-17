@@ -1,0 +1,61 @@
+name: Build Bobonia Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Android SDK
+        run: |
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          unzip -q commandlinetools-linux-9477386_latest.zip -d $HOME/android-sdk/cmdline-tools
+          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.2" "platforms;android-33"
+
+      - name: Download Godot 4.2.1
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.2.1-stable/Godot_v4.2.1-stable_linux.x86_64.zip
+          unzip -q Godot_v4.2.1-stable_linux.x86_64.zip
+          chmod +x Godot_v4.2.1-stable_linux.x86_64
+          sudo mv Godot_v4.2.1-stable_linux.x86_64 /usr/local/bin/godot
+
+      - name: Download Export Templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.2.1.stable
+          wget -q https://github.com/godotengine/godot/releases/download/4.2.1-stable/Godot_v4.2.1-stable_export_templates.tpz
+          unzip -q Godot_v4.2.1-stable_export_templates.tpz
+          mv templates/* ~/.local/share/godot/export_templates/4.2.1.stable/
+
+      - name: Generate Keystore
+        run: |
+          keytool -genkey -v -keystore bobonia.keystore -alias bobonia \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass bobonia123 -keypass bobonia123 \
+            -dname "CN=Bobonia,O=Game,C=US"
+
+      - name: Export APK
+        run: |
+          cd project
+          godot --headless --export-debug "Android" ../bobonia.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: Bobonia-APK
+          path: bobonia.apk
+          retention-days: 30
